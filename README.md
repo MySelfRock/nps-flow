@@ -1,2 +1,430 @@
-# nps-flow
-Projeto de NPS Flow
+# NPSFlow - Sistema de Pesquisas de Satisfação (NPS/CSAT/CES)
+
+Sistema SaaS multi-tenant para envio automatizado de pesquisas de satisfação, coleta de respostas por e-mail/WhatsApp, dashboards com métricas e alertas configuráveis.
+
+## 📋 Índice
+
+- [Visão Geral](#visão-geral)
+- [Tecnologias](#tecnologias)
+- [Arquitetura](#arquitetura)
+- [Instalação](#instalação)
+- [Estrutura do Banco de Dados](#estrutura-do-banco-de-dados)
+- [API Endpoints](#api-endpoints)
+- [Modelos e Relacionamentos](#modelos-e-relacionamentos)
+- [Desenvolvimento](#desenvolvimento)
+
+## 🎯 Visão Geral
+
+**NPSFlow** é uma plataforma SaaS para gestão de pesquisas de satisfação focada em PMEs, clínicas, lojas e prestadores de serviço. O sistema permite:
+
+- ✅ Envio automatizado de pesquisas NPS, CSAT e CES
+- ✅ Coleta de respostas via e-mail/WhatsApp
+- ✅ Dashboards com métricas em tempo real
+- ✅ Exportação de dados (CSV/PDF)
+- ✅ Alertas configuráveis para baixas pontuações
+- ✅ Multi-tenancy com isolamento de dados
+- ✅ Sistema de cobrança integrado (Stripe)
+
+## 🛠 Tecnologias
+
+### Backend
+- **Laravel 12** - Framework PHP
+- **PostgreSQL 15** - Banco de dados principal
+- **Redis** - Cache e filas
+- **JWT Auth** - Autenticação via tokens
+- **Docker** - Containerização
+
+### Frontend (Planejado)
+- **React 18** - Interface de usuário
+- **Vite** - Build tool
+- **TailwindCSS** - Estilização
+
+### Serviços Externos
+- **Mailgun/AWS SES** - Envio de e-mails
+- **Twilio/360dialog** - WhatsApp (opcional)
+- **Stripe** - Pagamentos
+
+## 🏗 Arquitetura
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   React     │────▶│   Laravel    │────▶│ PostgreSQL  │
+│  Frontend   │     │   API        │     │  Database   │
+└─────────────┘     └──────────────┘     └─────────────┘
+                            │
+                    ┌───────┴───────┐
+                    │               │
+                ┌───▼────┐    ┌────▼────┐
+                │ Redis  │    │ Mailgun │
+                │ Cache  │    │  /SES   │
+                └────────┘    └─────────┘
+```
+
+### Componentes Principais
+
+1. **API Gateway** (Nginx) - Roteamento de requisições
+2. **Application Servers** (Laravel) - Lógica de negócio
+3. **Worker Pool** - Processamento assíncrono (envio de e-mails, relatórios)
+4. **Database** - PostgreSQL com multi-tenancy
+5. **Cache/Queue** - Redis para sessões e filas
+6. **Storage** - S3-compatible para arquivos
+
+## 🚀 Instalação
+
+### Pré-requisitos
+
+- Docker & Docker Compose
+- Git
+
+### Passos
+
+1. **Clone o repositório**
+```bash
+git clone <repository-url>
+cd nps-flow
+```
+
+2. **Configure as variáveis de ambiente**
+```bash
+cp .env.example .env
+# Edite o arquivo .env com suas configurações
+```
+
+3. **Inicie os containers**
+```bash
+docker-compose up -d
+```
+
+4. **Execute as migrations**
+```bash
+docker-compose exec backend php artisan migrate
+```
+
+5. **Acesse a aplicação**
+- Backend API: http://localhost:8000
+- Frontend: http://localhost:3000
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
+
+## 📊 Estrutura do Banco de Dados
+
+### Tabelas Principais
+
+#### `tenants`
+Gerenciamento de empresas (multi-tenant)
+```sql
+- id (uuid, PK)
+- name (string)
+- cnpj (string, nullable)
+- plan (string: free, starter, pro, enterprise)
+- billing_customer_id (string, nullable)
+- timestamps
+```
+
+#### `users`
+Usuários do sistema com roles
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- name (string)
+- email (string, unique)
+- password (string, hashed)
+- role (string: super_admin, admin, manager, viewer)
+- last_login_at (timestamp)
+- timestamps
+```
+
+#### `campaigns`
+Campanhas de pesquisa
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- name (string)
+- type (string: NPS, CSAT, CES, CUSTOM)
+- message_template (json)
+- sender_email (string)
+- sender_name (string)
+- scheduled_at (timestamp)
+- status (string: draft, scheduled, sending, sent, paused)
+- settings (json)
+- created_by (uuid, FK users)
+- timestamps
+```
+
+#### `recipients`
+Destinatários das pesquisas
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- campaign_id (uuid, FK, nullable)
+- external_id (string)
+- name (string)
+- email (string)
+- phone (string)
+- token (string, unique) - para link de resposta
+- status (string: pending, sent, responded, failed)
+- tags (json)
+- timestamps
+```
+
+#### `responses`
+Respostas das pesquisas
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- campaign_id (uuid, FK)
+- recipient_id (uuid, FK)
+- score (integer 0-10 para NPS)
+- answers (json)
+- comment (text)
+- metadata (json: ip, user_agent, etc)
+- timestamps
+```
+
+#### `sends`
+Histórico de envios
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- campaign_id (uuid, FK)
+- recipient_id (uuid, FK)
+- channel (string: email, whatsapp)
+- status (string: pending, sent, delivered, failed, bounced)
+- provider_message_id (string)
+- attempts (integer)
+- last_attempt_at (timestamp)
+- error_message (text)
+- timestamps
+```
+
+#### `alerts`
+Configuração de alertas
+```sql
+- id (uuid, PK)
+- tenant_id (uuid, FK)
+- campaign_id (uuid, FK, nullable)
+- condition (json: threshold, etc)
+- notify_emails (json: array of emails)
+- webhook_url (string)
+- enabled (boolean)
+- timestamps
+```
+
+## 🔌 API Endpoints (Planejado)
+
+### Autenticação
+```
+POST   /api/v1/auth/signup         - Criar conta
+POST   /api/v1/auth/login          - Login (retorna JWT)
+POST   /api/v1/auth/refresh        - Refresh token
+POST   /api/v1/auth/logout         - Logout
+GET    /api/v1/auth/me             - Usuário atual
+```
+
+### Tenants & Users
+```
+GET    /api/v1/tenants/me          - Dados do tenant
+GET    /api/v1/users               - Listar usuários
+POST   /api/v1/users               - Criar usuário
+GET    /api/v1/users/{id}          - Detalhes do usuário
+PUT    /api/v1/users/{id}          - Atualizar usuário
+DELETE /api/v1/users/{id}          - Deletar usuário
+```
+
+### Campaigns
+```
+GET    /api/v1/campaigns           - Listar campanhas
+POST   /api/v1/campaigns           - Criar campanha
+GET    /api/v1/campaigns/{id}      - Detalhes da campanha
+PUT    /api/v1/campaigns/{id}      - Atualizar campanha
+DELETE /api/v1/campaigns/{id}      - Deletar campanha
+POST   /api/v1/campaigns/{id}/start   - Iniciar envio
+POST   /api/v1/campaigns/{id}/stop    - Parar envio
+```
+
+### Recipients
+```
+GET    /api/v1/campaigns/{id}/recipients        - Listar destinatários
+POST   /api/v1/campaigns/{id}/recipients        - Adicionar destinatário
+POST   /api/v1/campaigns/{id}/recipients/upload - Upload CSV
+DELETE /api/v1/campaigns/{id}/recipients/{rid}  - Remover destinatário
+```
+
+### Responses (Público)
+```
+GET    /r/{token}                  - Página de resposta (HTML)
+POST   /r/{token}/response         - Submeter resposta
+```
+
+### Dashboard & Reports
+```
+GET    /api/v1/reports/nps         - Relatório NPS
+GET    /api/v1/reports/responses   - Listagem de respostas
+GET    /api/v1/reports/export      - Exportar dados (CSV/PDF)
+```
+
+## 📦 Modelos e Relacionamentos
+
+### Tenant (Multi-tenancy)
+```php
+Tenant
+├─ hasMany: users
+├─ hasMany: campaigns
+├─ hasMany: recipients
+├─ hasMany: responses
+├─ hasMany: sends
+├─ hasMany: alerts
+├─ hasMany: auditLogs
+└─ hasMany: billingSubscriptions
+
+Métodos:
+- isOnPlan(string $plan): bool
+- isPremium(): bool
+```
+
+### User (Autenticação)
+```php
+User implements JWTSubject
+├─ belongsTo: tenant
+├─ hasMany: createdCampaigns
+└─ hasMany: auditLogs
+
+Métodos:
+- isSuperAdmin(): bool
+- isAdmin(): bool
+- canManage(): bool
+- updateLastLogin(): void
+- getJWTIdentifier()
+- getJWTCustomClaims()
+```
+
+### Campaign
+```php
+Campaign
+├─ belongsTo: tenant
+├─ belongsTo: creator (User)
+├─ hasMany: recipients
+├─ hasMany: responses
+├─ hasMany: sends
+└─ hasMany: alerts
+
+Métodos:
+- isNPS(): bool
+- isDraft(): bool
+- isSent(): bool
+- canBeSent(): bool
+- getNPSScore(): ?float
+- getResponseRate(): float
+```
+
+### Recipient
+```php
+Recipient
+├─ belongsTo: tenant
+├─ belongsTo: campaign
+├─ hasOne: response
+└─ hasMany: sends
+
+Métodos:
+- hasResponded(): bool
+- getResponseLink(): string
+- markAsResponded(): void
+Auto-gera token único na criação
+```
+
+### Response
+```php
+Response
+├─ belongsTo: tenant
+├─ belongsTo: campaign
+└─ belongsTo: recipient
+
+Métodos:
+- isPromoter(): bool (score >= 9)
+- isPassive(): bool (score 7-8)
+- isDetractor(): bool (score <= 6)
+- getCategory(): string
+```
+
+## 🧪 Desenvolvimento
+
+### Executar Testes
+```bash
+docker-compose exec backend php artisan test
+```
+
+### Executar Migrations
+```bash
+docker-compose exec backend php artisan migrate
+```
+
+### Rollback Migrations
+```bash
+docker-compose exec backend php artisan migrate:rollback
+```
+
+### Queue Worker
+```bash
+docker-compose exec backend php artisan queue:work
+```
+
+### Logs
+```bash
+docker-compose logs -f backend
+```
+
+## 🔐 Segurança
+
+- ✅ Senhas com bcrypt
+- ✅ JWT com expiração curta (15min) + refresh token
+- ✅ Rate limiting em endpoints públicos
+- ✅ Proteção CSRF
+- ✅ Validação de dados de entrada
+- ✅ Multi-tenancy com isolamento por tenant_id
+- ✅ HTTPS obrigatório em produção
+
+## 📝 Cálculo de NPS
+
+```
+NPS = (% Promotores - % Detratores) × 100
+
+Promotores: score 9-10
+Passivos: score 7-8
+Detratores: score 0-6
+```
+
+Exemplo implementado em `Campaign::getNPSScore()`:
+```php
+$promoters = $responses->where('score', '>=', 9)->count();
+$detractors = $responses->where('score', '<=', 6)->count();
+$total = $responses->count();
+return (($promoters - $detractors) / $total) * 100;
+```
+
+## 📈 Roadmap
+
+### MVP (Sprint 1-4) ✅ Em Progresso
+- [x] Setup inicial com Docker
+- [x] Database schema e migrations
+- [x] Models Eloquent com relacionamentos
+- [ ] Autenticação JWT
+- [ ] CRUD de campanhas
+- [ ] Sistema de envio de e-mails
+- [ ] Página pública de resposta
+- [ ] Dashboard básico
+
+### Pós-MVP
+- [ ] Envio por WhatsApp
+- [ ] Agendamento recorrente
+- [ ] Relatórios PDF avançados
+- [ ] Integração com CRMs via webhooks
+- [ ] White-label por tenant
+- [ ] Multi-idioma
+
+## 📄 Licença
+
+MIT License - veja LICENSE para detalhes.
+
+---
+
+**NPSFlow** - Transforme feedback em ação! 🚀
