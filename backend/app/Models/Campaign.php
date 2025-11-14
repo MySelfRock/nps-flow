@@ -19,6 +19,7 @@ class Campaign extends Model
         'sender_email',
         'sender_name',
         'scheduled_at',
+        'sent_at',
         'status',
         'settings',
         'created_by',
@@ -28,6 +29,7 @@ class Campaign extends Model
         'message_template' => 'array',
         'settings' => 'array',
         'scheduled_at' => 'datetime',
+        'sent_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

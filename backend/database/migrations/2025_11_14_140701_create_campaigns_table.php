@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('sender_email')->nullable();
             $table->string('sender_name')->nullable();
             $table->timestamp('scheduled_at')->nullable();
+            $table->timestamp('sent_at')->nullable();
             $table->string('status')->default('draft'); // draft, scheduled, sending, sent, paused
             $table->json('settings')->nullable();
             $table->uuid('created_by')->nullable();

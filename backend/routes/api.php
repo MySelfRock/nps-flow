@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
 
-    // Public routes
-    Route::prefix('auth')->group(function () {
+    // Public routes with rate limiting
+    Route::middleware(['throttle:5,1'])->prefix('auth')->group(function () {
         Route::post('/signup', [AuthController::class, 'signup']);
         Route::post('/login', [AuthController::class, 'login']);
     });
@@ -78,8 +78,8 @@ Route::prefix('v1')->group(function () {
     });
 });
 
-// Public response page (no auth required)
-Route::prefix('r')->group(function () {
+// Public response page (no auth required) with rate limiting
+Route::prefix('r')->middleware(['throttle:10,1'])->group(function () {
     Route::get('/{token}', [ResponseController::class, 'show']);
     Route::post('/{token}', [ResponseController::class, 'store']);
 });

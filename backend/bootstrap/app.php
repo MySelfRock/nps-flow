@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Global middleware
+        $middleware->append(\App\Http\Middleware\Cors::class);
+
+        // Middleware aliases
         $middleware->alias([
             'tenant.isolation' => \App\Http\Middleware\TenantIsolation::class,
         ]);

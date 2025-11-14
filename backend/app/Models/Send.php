@@ -19,11 +19,13 @@ class Send extends Model
         'provider_message_id',
         'attempts',
         'last_attempt_at',
+        'sent_at',
         'error_message',
     ];
 
     protected $casts = [
         'last_attempt_at' => 'datetime',
+        'sent_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
