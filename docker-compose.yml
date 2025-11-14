@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: npsflow_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: npsflow
+      POSTGRES_USER: npsflow
+      POSTGRES_PASSWORD: npsflow_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - npsflow
+
+  # Redis for cache and queues
+  redis:
+    image: redis:7-alpine
+    container_name: npsflow_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - npsflow
+
+  # Laravel Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: npsflow_backend
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+      - ./backend/storage:/var/www/storage
+    ports:
+      - "8000:8000"
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: npsflow
+      DB_USERNAME: npsflow
+      DB_PASSWORD: npsflow_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_ENV: local
+      APP_DEBUG: "true"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - npsflow
+    command: php artisan serve --host=0.0.0.0 --port=8000
+
+  # Laravel Queue Worker
+  queue:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: npsflow_queue
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: npsflow
+      DB_USERNAME: npsflow
+      DB_PASSWORD: npsflow_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_ENV: local
+    depends_on:
+      - db
+      - redis
+      - backend
+    networks:
+      - npsflow
+    command: php artisan queue:work --verbose --tries=3 --timeout=90
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: npsflow_frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8000/api
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      - backend
+    networks:
+      - npsflow
+    command: npm start
+
+  # Nginx (optional, for production-like setup)
+  nginx:
+    image: nginx:alpine
+    container_name: npsflow_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./backend/public:/var/www/public
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - npsflow
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  npsflow:
+    driver: bridge
