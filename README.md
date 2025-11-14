@@ -100,11 +100,24 @@ docker-compose up -d
 docker-compose exec backend php artisan migrate
 ```
 
-5. **Acesse a aplicação**
+5. **Popule dados de demonstração** (opcional)
+```bash
+docker-compose exec backend php artisan db:seed --class=DemoDataSeeder
+```
+
+6. **Acesse a aplicação**
 - Backend API: http://localhost:8000
 - Frontend: http://localhost:3000
+- MailHog (Email testing): http://localhost:8025
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
+
+### Testando o Envio de Emails
+
+O ambiente de desenvolvimento usa **MailHog** para capturar emails localmente:
+- Acesse http://localhost:8025 para visualizar os emails enviados
+- Todos os emails são interceptados, nenhum é enviado para destinatários reais
+- Use os dados de demonstração para testar o fluxo completo
 
 ## 📊 Estrutura do Banco de Dados
 
@@ -379,6 +392,109 @@ Métodos:
 - isPassive(): bool (score 7-8)
 - isDetractor(): bool (score <= 6)
 - getCategory(): string
+```
+
+## 📧 Sistema de Envio de Emails
+
+### Arquitetura
+
+O sistema usa **Laravel Queues** com Redis para processamento assíncrono de emails:
+
+```
+CampaignController::start()
+        ↓
+    SendCampaignJob (dispatched to queue)
+        ↓
+    For each recipient → SendEmailJob (dispatched with delay)
+        ↓
+    SurveyEmail (mailable)
+        ↓
+    SMTP (MailHog/Mailgun/SES)
+```
+
+### Jobs Implementados
+
+#### SendCampaignJob
+- **Responsabilidade**: Orquestrar o envio de uma campanha completa
+- **Ações**:
+  - Busca todos os recipients com status `pending` ou `failed`
+  - Despacha um `SendEmailJob` para cada recipient
+  - Aplica rate limiting (2 segundos entre dispatches)
+  - Atualiza status da campanha para `sending`
+- **Timeout**: 600 segundos
+
+#### SendEmailJob
+- **Responsabilidade**: Enviar email individual para um recipient
+- **Ações**:
+  - Verifica se recipient já respondeu (skip se sim)
+  - Cria/atualiza registro `Send` com tentativas
+  - Envia email via `SurveyEmail` mailable
+  - Atualiza status do `Send` e `Recipient`
+  - Loga sucesso/falha
+- **Retries**: 3 tentativas
+- **Backoff**: 1min, 5min, 15min
+- **Timeout**: 60 segundos
+
+### Email Template (SurveyEmail)
+
+**Placeholders suportados**:
+- `{{name}}` - Nome do destinatário
+- `{{email}}` - Email do destinatário
+- `{{link}}` - Link único para resposta
+- `{{campaign_name}}` - Nome da campanha
+
+**Exemplo de template**:
+```
+Olá {{name}},
+
+Em uma escala de 0 a 10, quanto você recomendaria nossa empresa?
+
+Clique aqui para responder: {{link}}
+
+Obrigado!
+```
+
+### Monitoramento
+
+**Logs**:
+```bash
+docker-compose logs -f queue
+```
+
+**Queue Status**:
+```bash
+docker-compose exec backend php artisan queue:work --verbose
+```
+
+**Failed Jobs**:
+```bash
+docker-compose exec backend php artisan queue:failed
+docker-compose exec backend php artisan queue:retry all
+```
+
+### Configuração de Email
+
+**Desenvolvimento** (MailHog):
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=mailhog
+MAIL_PORT=1025
+MAIL_ENCRYPTION=null
+```
+
+**Produção** (Mailgun):
+```env
+MAIL_MAILER=mailgun
+MAILGUN_DOMAIN=your-domain.com
+MAILGUN_SECRET=your-api-key
+```
+
+**Produção** (AWS SES):
+```env
+MAIL_MAILER=ses
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+AWS_DEFAULT_REGION=us-east-1
 ```
 
 ## 🧪 Desenvolvimento

@@ -29,6 +29,17 @@ services:
     networks:
       - npsflow
 
+  # MailHog for local email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: npsflow_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    networks:
+      - npsflow
+
   # Laravel Backend API
   backend:
     build:
@@ -51,11 +62,20 @@ services:
       DB_PASSWORD: npsflow_secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      MAIL_USERNAME: null
+      MAIL_PASSWORD: null
+      MAIL_ENCRYPTION: null
+      MAIL_FROM_ADDRESS: noreply@npsflow.local
+      MAIL_FROM_NAME: NPSFlow
       APP_ENV: local
       APP_DEBUG: "true"
     depends_on:
       - db
       - redis
+      - mailhog
     networks:
       - npsflow
     command: php artisan serve --host=0.0.0.0 --port=8000
@@ -79,10 +99,19 @@ services:
       DB_PASSWORD: npsflow_secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      MAIL_USERNAME: null
+      MAIL_PASSWORD: null
+      MAIL_ENCRYPTION: null
+      MAIL_FROM_ADDRESS: noreply@npsflow.local
+      MAIL_FROM_NAME: NPSFlow
       APP_ENV: local
     depends_on:
       - db
       - redis
+      - mailhog
       - backend
     networks:
       - npsflow

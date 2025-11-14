@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendCampaignJob;
 use App\Models\AuditLog;
 use App\Models\Campaign;
 use Illuminate\Http\JsonResponse;
@@ -275,10 +276,8 @@ class CampaignController extends Controller
         }
 
         try {
-            $campaign->update(['status' => 'sending']);
-
-            // TODO: Dispatch job to start sending emails
-            // SendCampaignJob::dispatch($campaign);
+            // Dispatch job to start sending emails
+            SendCampaignJob::dispatch($campaign);
 
             AuditLog::logAction('campaign_started', $user, [
                 'campaign_id' => $campaign->id,
