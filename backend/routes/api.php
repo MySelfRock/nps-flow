@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampaignController;
+use App\Http\Controllers\Api\RecipientController;
+use App\Http\Controllers\ResponseController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -48,11 +50,12 @@ Route::prefix('v1')->group(function () {
             Route::post('/campaigns/{id}/start', [CampaignController::class, 'start']);
             Route::post('/campaigns/{id}/stop', [CampaignController::class, 'stop']);
 
-            // Recipients (coming soon)
-            // Route::prefix('campaigns/{campaign}')->group(function () {
-            //     Route::apiResource('recipients', RecipientController::class);
-            //     Route::post('recipients/upload', [RecipientController::class, 'uploadCsv']);
-            // });
+            // Recipients
+            Route::prefix('campaigns/{campaign}')->group(function () {
+                Route::get('/recipients/template', [RecipientController::class, 'template']);
+                Route::post('/recipients/upload', [RecipientController::class, 'uploadCsv']);
+                Route::apiResource('recipients', RecipientController::class);
+            });
 
             // Reports & Dashboard (coming soon)
             // Route::prefix('reports')->group(function () {
@@ -76,6 +79,6 @@ Route::prefix('v1')->group(function () {
 
 // Public response page (no auth required)
 Route::prefix('r')->group(function () {
-    // Route::get('/{token}', [ResponseController::class, 'show']);
-    // Route::post('/{token}/response', [ResponseController::class, 'store']);
+    Route::get('/{token}', [ResponseController::class, 'show']);
+    Route::post('/{token}', [ResponseController::class, 'store']);
 });

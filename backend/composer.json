@@ -9,6 +9,7 @@
         "php": "^8.2",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
+        "league/csv": "^9.27",
         "predis/predis": "^3.2",
         "tymon/jwt-auth": "^2.2"
     },
