@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\RecipientController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\ResponseController;
 use Illuminate\Support\Facades\Route;
 
@@ -57,12 +58,12 @@ Route::prefix('v1')->group(function () {
                 Route::apiResource('recipients', RecipientController::class);
             });
 
-            // Reports & Dashboard (coming soon)
-            // Route::prefix('reports')->group(function () {
-            //     Route::get('/nps', [ReportController::class, 'nps']);
-            //     Route::get('/responses', [ReportController::class, 'responses']);
-            //     Route::get('/export', [ReportController::class, 'export']);
-            // });
+            // Reports & Dashboard
+            Route::prefix('reports')->group(function () {
+                Route::get('/nps', [ReportController::class, 'npsMetrics']);
+                Route::get('/responses', [ReportController::class, 'responses']);
+                Route::get('/export', [ReportController::class, 'export']);
+            });
 
             // Alerts (coming soon)
             // Route::apiResource('alerts', AlertController::class);

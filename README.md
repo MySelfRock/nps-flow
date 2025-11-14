@@ -210,7 +210,7 @@ Configuração de alertas
 - timestamps
 ```
 
-## 🔌 API Endpoints (Planejado)
+## 🔌 API Endpoints
 
 ### Autenticação
 ```
@@ -258,9 +258,44 @@ POST   /r/{token}/response         - Submeter resposta
 
 ### Dashboard & Reports
 ```
-GET    /api/v1/reports/nps         - Relatório NPS
-GET    /api/v1/reports/responses   - Listagem de respostas
-GET    /api/v1/reports/export      - Exportar dados (CSV/PDF)
+GET    /api/v1/reports/nps         - Métricas e tendências NPS
+       Query params:
+       - campaign_id: Filtrar por campanha específica
+       - start_date: Data inicial (YYYY-MM-DD)
+       - end_date: Data final (YYYY-MM-DD)
+
+       Retorna:
+       - overall: NPS geral, taxa de resposta, promoters/passives/detractors
+       - score_distribution: Distribuição de notas 0-10
+       - trends: Evolução mensal do NPS (últimos 6 meses)
+       - detractor_comments: Top 10 comentários de detratores
+       - campaigns: Breakdown por campanha
+
+GET    /api/v1/reports/responses   - Listagem detalhada de respostas
+       Query params (filtros):
+       - campaign_id: Campanha específica
+       - campaign_type: NPS, CSAT, CES, CUSTOM
+       - min_score, max_score: Faixa de pontuação
+       - category: promoter, passive, detractor
+       - start_date, end_date: Período
+       - tags: Tags de destinatários
+       - search: Busca em comentários
+       - has_comment: true/false
+       - sort_by: created_at, score
+       - sort_order: asc, desc
+       - per_page: Paginação (default: 50)
+
+       Retorna: Respostas paginadas com detalhes completos
+
+GET    /api/v1/reports/export      - Exportar dados
+       Query params:
+       - format: csv, json (default: csv)
+       - type: responses, summary (default: responses)
+       - (+ todos os filtros de /reports/responses)
+
+       Retorna:
+       - CSV stream para download
+       - JSON formatado para processamento
 ```
 
 ## 📦 Modelos e Relacionamentos
