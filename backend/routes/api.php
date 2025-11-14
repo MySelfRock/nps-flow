@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CampaignController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,8 +43,10 @@ Route::prefix('v1')->group(function () {
             // Users management (coming soon)
             // Route::apiResource('users', UserController::class);
 
-            // Campaigns (coming soon)
-            // Route::apiResource('campaigns', CampaignController::class);
+            // Campaigns
+            Route::apiResource('campaigns', CampaignController::class);
+            Route::post('/campaigns/{id}/start', [CampaignController::class, 'start']);
+            Route::post('/campaigns/{id}/stop', [CampaignController::class, 'stop']);
 
             // Recipients (coming soon)
             // Route::prefix('campaigns/{campaign}')->group(function () {
