@@ -29,35 +29,36 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized
+    // Handle 401 Unauthorized - try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // Try to refresh token
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken) {
+      // Try to refresh token using the current access_token
+      const token = localStorage.getItem('token');
+      if (token) {
         try {
+          // JWT uses the same token for refresh
           const response = await axios.post(`${API_URL}/auth/refresh`, {}, {
             headers: {
-              Authorization: `Bearer ${refreshToken}`,
+              Authorization: `Bearer ${token}`,
             },
           });
 
           const { access_token } = response.data.data;
           localStorage.setItem('token', access_token);
 
+          // Retry the original request with new token
           originalRequest.headers.Authorization = `Bearer ${access_token}`;
           return axiosInstance(originalRequest);
         } catch (refreshError) {
           // Refresh failed, logout user
           localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
           localStorage.removeItem('user');
           window.location.href = '/login';
           return Promise.reject(refreshError);
         }
       } else {
-        // No refresh token, logout user
+        // No token, logout user
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login';

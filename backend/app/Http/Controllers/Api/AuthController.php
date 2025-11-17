@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Rules\StrongPassword;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -24,7 +27,7 @@ class AuthController extends Controller
             'cnpj' => 'nullable|string|max:18',
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', 'confirmed', new StrongPassword()],
         ]);
 
         if ($validator->fails()) {
@@ -83,10 +86,16 @@ class AuthController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            // Log the full error for debugging
+            Log::error('Signup failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'email' => $request->email,
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create account',
-                'error' => $e->getMessage()
+                'message' => 'Failed to create account. Please try again later.',
             ], 500);
         }
     }
@@ -185,10 +194,14 @@ class AuthController extends Controller
             $token = auth('api')->refresh();
             return $this->respondWithToken($token);
         } catch (\Exception $e) {
+            Log::error('Token refresh failed', [
+                'error' => $e->getMessage(),
+                'user_id' => auth('api')->user()->id ?? null,
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Token refresh failed',
-                'error' => $e->getMessage()
+                'message' => 'Token refresh failed. Please login again.',
             ], 401);
         }
     }
