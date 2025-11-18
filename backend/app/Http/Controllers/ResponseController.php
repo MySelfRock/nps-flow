@@ -167,8 +167,8 @@ class ResponseController extends Controller
 
         foreach ($alerts as $alert) {
             if ($alert->shouldTrigger($response)) {
-                // TODO: Dispatch job to send alert notification
-                // SendAlertJob::dispatch($alert, $response);
+                // Dispatch job to send alert notification
+                \App\Jobs\SendAlertJob::dispatch($alert, $response);
 
                 \Log::info('Alert triggered', [
                     'alert_id' => $alert->id,

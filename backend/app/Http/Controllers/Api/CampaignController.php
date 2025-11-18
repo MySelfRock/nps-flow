@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\SendCampaignJob;
 use App\Models\AuditLog;
 use App\Models\Campaign;
+use App\Rules\DateRangeValidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -45,6 +46,8 @@ class CampaignController extends Controller
             'sender_email' => 'nullable|email',
             'sender_name' => 'nullable|string|max:255',
             'scheduled_at' => 'nullable|date|after:now',
+            'starts_at' => 'nullable|date',
+            'ends_at' => ['nullable', 'date', new DateRangeValidation()],
             'settings' => 'nullable|array',
         ]);
 
@@ -64,6 +67,8 @@ class CampaignController extends Controller
                 'sender_email' => $request->sender_email ?? config('mail.from.address'),
                 'sender_name' => $request->sender_name ?? config('mail.from.name'),
                 'scheduled_at' => $request->scheduled_at,
+                'starts_at' => $request->starts_at,
+                'ends_at' => $request->ends_at,
                 'status' => 'draft',
                 'settings' => $request->settings ?? [],
                 'created_by' => $user->id,
@@ -151,6 +156,8 @@ class CampaignController extends Controller
             'sender_email' => 'sometimes|email',
             'sender_name' => 'sometimes|string|max:255',
             'scheduled_at' => 'sometimes|date|after:now',
+            'starts_at' => 'sometimes|date',
+            'ends_at' => ['sometimes', 'date', new DateRangeValidation()],
             'settings' => 'sometimes|array',
             'status' => 'sometimes|in:draft,scheduled,paused',
         ]);
@@ -170,6 +177,8 @@ class CampaignController extends Controller
                 'sender_email',
                 'sender_name',
                 'scheduled_at',
+                'starts_at',
+                'ends_at',
                 'settings',
                 'status',
             ]));
