@@ -7,6 +7,7 @@ use App\Models\Response as SurveyResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Mews\Purifier\Facades\Purifier;
 
 class ResponseController extends Controller
 {
@@ -108,6 +109,11 @@ class ResponseController extends Controller
         }
 
         try {
+            // Sanitize comment to prevent XSS
+            $sanitizedComment = $request->comment
+                ? Purifier::clean($request->comment, 'comment')
+                : null;
+
             // Create response
             $response = SurveyResponse::create([
                 'tenant_id' => $recipient->tenant_id,
@@ -115,7 +121,7 @@ class ResponseController extends Controller
                 'recipient_id' => $recipient->id,
                 'score' => $request->score ?? null,
                 'answers' => $request->answers ?? null,
-                'comment' => $request->comment,
+                'comment' => $sanitizedComment,
                 'metadata' => [
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
@@ -139,10 +145,15 @@ class ResponseController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            \Log::error('Failed to submit survey response', [
+                'error' => $e->getMessage(),
+                'recipient_id' => $recipient->id,
+                'campaign_id' => $recipient->campaign_id,
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit response',
-                'error' => $e->getMessage()
+                'message' => 'Failed to submit response. Please try again.',
             ], 500);
         }
     }
@@ -156,8 +167,8 @@ class ResponseController extends Controller
 
         foreach ($alerts as $alert) {
             if ($alert->shouldTrigger($response)) {
-                // TODO: Dispatch job to send alert notification
-                // SendAlertJob::dispatch($alert, $response);
+                // Dispatch job to send alert notification
+                \App\Jobs\SendAlertJob::dispatch($alert, $response);
 
                 \Log::info('Alert triggered', [
                     'alert_id' => $alert->id,

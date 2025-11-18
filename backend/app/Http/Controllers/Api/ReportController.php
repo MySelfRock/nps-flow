@@ -7,6 +7,7 @@ use App\Models\Campaign;
 use App\Models\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
@@ -18,6 +19,24 @@ class ReportController extends Controller
     {
         $user = auth('api')->user();
 
+        // Create cache key based on tenant and filters
+        $cacheKey = 'nps_metrics:' . $user->tenant_id . ':'
+            . md5(json_encode($request->only(['campaign_id', 'start_date', 'end_date'])));
+
+        // Cache for 5 minutes (300 seconds)
+        return response()->json([
+            'success' => true,
+            'data' => Cache::remember($cacheKey, 300, function () use ($request, $user) {
+                return $this->calculateNPSMetrics($request, $user);
+            })
+        ]);
+    }
+
+    /**
+     * Calculate NPS metrics (extracted for caching)
+     */
+    private function calculateNPSMetrics(Request $request, $user): array
+    {
         $query = Campaign::where('tenant_id', $user->tenant_id)
             ->where('type', 'NPS');
 
@@ -34,11 +53,11 @@ class ReportController extends Controller
             $query->where('created_at', '<=', $request->end_date);
         }
 
-        $campaigns = $query->with(['responses', 'recipients'])->get();
+        $campaigns = $query->withCount(['responses', 'recipients'])->get();
 
-        // Calculate overall metrics
-        $totalRecipients = $campaigns->sum(fn($c) => $c->recipients()->count());
-        $totalResponses = $campaigns->sum(fn($c) => $c->responses()->count());
+        // Calculate overall metrics using withCount (no N+1 queries)
+        $totalRecipients = $campaigns->sum('recipients_count');
+        $totalResponses = $campaigns->sum('responses_count');
         $totalResponseRate = $totalRecipients > 0
             ? ($totalResponses / $totalRecipients) * 100
             : 0;
@@ -46,6 +65,7 @@ class ReportController extends Controller
         // Calculate overall NPS
         $allResponses = Response::whereIn('campaign_id', $campaigns->pluck('id'))
             ->whereNotNull('score')
+            ->select('campaign_id', 'score')
             ->get();
 
         $promoters = $allResponses->where('score', '>=', 9)->count();
@@ -62,6 +82,9 @@ class ReportController extends Controller
             ->map(fn($group) => $group->count())
             ->sortKeys()
             ->toArray();
+
+        // Group responses by campaign for efficient NPS calculation
+        $responsesByCampaign = $allResponses->groupBy('campaign_id');
 
         // Get trends (by month for the last 6 months)
         $trendsData = Response::whereIn('campaign_id', $campaigns->pluck('id'))
@@ -104,41 +127,53 @@ class ReportController extends Controller
                 'created_at' => $r->created_at,
             ]);
 
-        // Campaign-level breakdown
-        $campaignBreakdown = $campaigns->map(function ($campaign) {
+        // Campaign-level breakdown (fully optimized - no N+1 queries)
+        $campaignBreakdown = $campaigns->map(function ($campaign) use ($responsesByCampaign) {
+            // Get responses for this campaign from pre-loaded collection
+            $campaignResponses = $responsesByCampaign->get($campaign->id, collect());
+
+            $npsScore = null;
+            if ($campaignResponses->count() > 0) {
+                $campaignPromoters = $campaignResponses->where('score', '>=', 9)->count();
+                $campaignDetractors = $campaignResponses->where('score', '<=', 6)->count();
+                $npsScore = (($campaignPromoters - $campaignDetractors) / $campaignResponses->count()) * 100;
+            }
+
+            $responseRate = $campaign->recipients_count > 0
+                ? ($campaign->responses_count / $campaign->recipients_count) * 100
+                : 0;
+
             return [
                 'id' => $campaign->id,
                 'name' => $campaign->name,
-                'nps_score' => $campaign->getNPSScore(),
-                'response_rate' => $campaign->getResponseRate(),
-                'total_recipients' => $campaign->recipients()->count(),
-                'total_responses' => $campaign->responses()->count(),
+                'nps_score' => $npsScore !== null ? round($npsScore, 2) : null,
+                'response_rate' => round($responseRate, 2),
+                'total_recipients' => $campaign->recipients_count,
+                'total_responses' => $campaign->responses_count,
                 'status' => $campaign->status,
                 'created_at' => $campaign->created_at,
             ];
         });
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'overall' => [
-                    'nps_score' => $overallNPS !== null ? round($overallNPS, 2) : null,
-                    'total_recipients' => $totalRecipients,
-                    'total_responses' => $totalResponses,
-                    'response_rate' => round($totalResponseRate, 2),
-                    'promoters' => $promoters,
-                    'passives' => $passives,
-                    'detractors' => $detractors,
-                    'promoters_percentage' => $total > 0 ? round(($promoters / $total) * 100, 2) : 0,
-                    'passives_percentage' => $total > 0 ? round(($passives / $total) * 100, 2) : 0,
-                    'detractors_percentage' => $total > 0 ? round(($detractors / $total) * 100, 2) : 0,
-                ],
-                'score_distribution' => $scoreDistribution,
-                'trends' => $trendsData,
-                'detractor_comments' => $detractorComments,
-                'campaigns' => $campaignBreakdown,
-            ]
-        ]);
+        return [
+            'overall' => [
+                'nps_score' => $overallNPS !== null ? round($overallNPS, 2) : null,
+                'total_recipients' => $totalRecipients,
+                'total_responses' => $totalResponses,
+                'response_rate' => round($totalResponseRate, 2),
+                'promoters' => $promoters,
+                'passives' => $passives,
+                'detractors' => $detractors,
+                'promoters_percentage' => $total > 0 ? round(($promoters / $total) * 100, 2) : 0,
+                'passives_percentage' => $total > 0 ? round(($passives / $total) * 100, 2) : 0,
+                'detractors_percentage' => $total > 0 ? round(($detractors / $total) * 100, 2) : 0,
+            ],
+            'score_distribution' => $scoreDistribution,
+            'trends' => $trendsData,
+            'detractor_comments' => $detractorComments,
+            'campaigns' => $campaignBreakdown,
+            'cached_at' => now()->toIso8601String(),
+        ];
     }
 
     /**
@@ -224,8 +259,8 @@ class ReportController extends Controller
             $query->orderBy('responses.' . $sortBy, $sortOrder);
         }
 
-        // Paginate results
-        $perPage = $request->get('per_page', 50);
+        // Paginate results with validation (max 100 per page)
+        $perPage = min((int)$request->get('per_page', 50), 100);
         $responses = $query->with(['campaign:id,name,type', 'recipient:id,name,email,tags'])
             ->paginate($perPage);
 
